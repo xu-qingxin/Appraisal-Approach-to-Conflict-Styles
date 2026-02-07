@@ -1,6 +1,6 @@
 # Appraisal Approach to Conflict Styles
 
-#### Replication data and scripts for: Xu, Qingxin (in press). Appraisal Approach to Conflict Styles: Computational Mapping of Disputant’s Attitudinal Disposition Patterns in Family Mediations
+#### Replication data and scripts for: Xu, Qingxin (2026). Appraisal Approach to Conflict Styles: Computational Mapping of Disputant's Attitudinal Disposition Patterns in Family Mediations
 #### Research overview
 
 In the high-stakes arena of interpersonal conflict, language transcends mere communication – it is a battleground for identity. Moving beyond observational and self-report methodologies dominating conflict research, this study pioneers computational mapping of disputants’ evaluative language patterns through Systemic Functional Linguistics (SFL)-based discourse analysis, establishing an empirical basis for characterising conflict styles.
