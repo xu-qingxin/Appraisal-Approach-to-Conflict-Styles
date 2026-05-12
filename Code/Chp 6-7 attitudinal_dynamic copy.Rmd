@@ -1,0 +1,687 @@
+---
+title: 'Chapter 5: A dynamic view of attitudinal disposition; OAO included'
+author: "Qingxin Xu"
+date: "08 June 2021"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=TRUE}
+library(tidyverse)
+library(ggpubr)
+library(ggplot2)
+options(tibble.print_min = Inf)
+```
+
+```{r import data}
+#load csv files
+filename = list.files(getwd(), pattern = "csv", full.names=T)
+d = data.frame()
+bin = data.frame()
+for (i in 1:length(filename)){
+  bin = read.csv(filename[i])
+  bin = mutate(bin, filename = filename[i])
+  d = rbind(d, bin)
+}
+```
+
+
+```{r wrangle, include=TRUE}
+#select speakers
+df = d%>%
+  mutate_if(is.factor, as.character)%>%
+  mutate(turn = as.numeric(turn))%>%
+  filter(grepl("Husband", speaker) | grepl("Wife", speaker))%>%
+  mutate(position = ifelse(grepl("WH", speaker), "wayward husband",
+                        ifelse(grepl("AW", speaker), "aggrieved wife",
+                               ifelse(grepl("WW", speaker), "wayward wife", "aggrieved husband")))) %>%
+  mutate(gender = ifelse(grepl("Husband", speaker), "male", "female")) %>%
+  mutate(waywardness = ifelse(grepl("wayward", position), "wayward", "aggrieved"))%>%
+  mutate(target = ifelse(grepl("antagonist", target.detail), "antagonist",
+                         ifelse(grepl("self", target.detail), "self","other"))) %>%
+  mutate(graduation = ifelse(grepl("up", graduation.detail), "upscale",
+                             ifelse(grepl("down", graduation.detail), "downscale", "unscaled")))%>%
+  mutate(engagement = ifelse(grepl("monoglossic", engagement.detail), "monogloss",
+                             ifelse(grepl("disclaim", engagement.detail), "disclaim",
+                                    ifelse(grepl("proclaim", engagement.detail), "proclaim",
+                                           ifelse(grepl("attribute", engagement.detail), "attribute",
+                                                  ifelse(grepl("entertain", engagement.detail), "entertain", NA))))))%>%
+  mutate(mitigate = ifelse(graduation == "downscale" | engagement == "entertain", "mitigated", "unmitigated"))%>%
+  rename(addressee.detail = addressee)%>%
+  mutate(addressee = ifelse(grepl("antagonist", addressee.detail), "antagonist",
+                            ifelse(grepl("hostess", addressee.detail), "hostess",
+                                   ifelse(grepl("mediator", addressee.detail), "mediator", "other"))))%>%
+  filter(valence != "")%>%
+  unite(target, valence, col = "attitude_new", sep = ",", remove = FALSE)%>%
+  mutate(stance = ifelse(trigger == "antagonist", "Neg_aff_triggered", 
+                         ifelse(trigger == "observed", "observed Affect", 
+                                ifelse(explicitness == "invoke", "invocation", attitude_new))))%>%
+  unite(stance, mitigate, col = "stan_miti", sep = ",", remove = FALSE)%>%
+  mutate(stance_mitigate = ifelse(stance == "invocation", "invocation",
+                                  ifelse(mitigate == "mitigated", stan_miti,"unmitigated inscription")))%>%
+  mutate(stance_mitigate_all = ifelse(stance == "invocation", "invocation",
+                                  ifelse(mitigate == "mitigated", stan_miti, stance)))%>%
+  mutate(stage = ifelse(turn == 0, "pre-mediation",
+                        ifelse(grepl("H01", speaker)&turn <= 137, "Problem Discussion",
+                        ifelse(grepl("H02", speaker)&turn <= 140, "Problem Discussion",
+                               ifelse(grepl("H03", speaker)&turn <= 148, "Problem Discussion",
+                                      ifelse(grepl("W01", speaker)&turn <= 96, "Problem Discussion",
+                                             ifelse(grepl("W02", speaker)&turn <= 98, "Problem Discussion",
+                                                    ifelse(grepl("W03", speaker)&turn <= 202, "Problem Discussion",
+                                                          
+                                                                 ifelse(grepl("H01", speaker)&turn<=177, "Private Mediation",
+                                                                        ifelse(grepl("H02", speaker)&turn <= 184, "Private Mediation",
+                               ifelse(grepl("H03", speaker)&turn <= 189, "Private Mediation",
+                                      ifelse(grepl("W01", speaker)&turn <= 132, "Private Mediation",
+                                             ifelse(grepl("W02", speaker)&turn <= 131, "Private Mediation",
+                                                    ifelse(grepl("W03", speaker)&turn <= 238, "Private Mediation", "Post-mediation"
+                                                                        )))))))))))))) %>%
+  mutate(numOfInstances = 1)
+
+```
+
+```{r total attitude count, include=TRUE}
+totalAttitude = df %>%
+  mutate(total = 1) %>%
+  group_by(speaker)%>%
+  summarise(total = sum(total)) 
+df$total <- totalAttitude$total[match(df$speaker, totalAttitude$speaker)]
+```
+
+
+```{r H01 stance shift, include=TRUE}
+#png("H01_shift.png", units="in", width=10, height=5, res=200)
+df_H01_shift = df%>%
+  filter(stage == "Problem Discussion") %>%  
+  filter(grepl("H01", speaker)) %>%
+  filter(valence != "")%>%
+  #filter(attitude == "judgement" | trigger == "antagonist")%>%
+  filter(target != "other")%>%
+  filter(turn != "0")%>%
+  group_by(speaker, stance, turn)%>%
+  summarise(numOfInstances = sum(numOfInstances))
+
+ggplot(df_H01_shift, aes(turn, numOfInstances, fill = stance)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300","blue", "#CCCCCC", "#CC0000","cyan", "#E7B800", "#FF33FF")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+```{r H_H01 stance shift, include=TRUE}
+#png("Husband_H01_WH_stance_shift.png", units="in", width=10, height=3, res=200)
+ggplot(subset(df_H01_shift, speaker == "Husband_H01_WH"), aes(turn, numOfInstances, fill = stance)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300", "#CCCCCC", "cyan","#FF33FF")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+
+```{r H02 stance shift, include=TRUE}
+#png("H02_shift.png", units="in", width=10, height=5, res=200)
+df_H02_shift = df%>%
+  filter(stage == "Problem Discussion") %>% 
+  filter(grepl("H02", speaker)) %>%
+  filter(valence != "")%>%
+  #filter(attitude == "judgement" | trigger == "antagonist")%>%
+  filter(target != "other")%>%
+  filter(turn != "0")%>%
+  group_by(speaker, stance, turn)%>%
+  summarise(numOfInstances = sum(numOfInstances))
+
+ggplot(df_H02_shift, aes(turn, numOfInstances, fill = stance)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300","#CCCCCC", "#CC0000","cyan", "#E7B800", "#FF33FF")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+
+```{r H03 stance shift, include=TRUE}
+#png("H03_shift.png", units="in", width=10, height=5, res=200)
+df_H03_shift = df%>%
+  filter(stage == "Problem Discussion") %>% 
+  filter(grepl("H03", speaker)) %>%
+  filter(valence != "")%>%
+  #filter(attitude == "judgement" | trigger == "antagonist")%>%
+  filter(target != "other")%>%
+  filter(turn != "0")%>%
+  group_by(speaker, stance, turn)%>%
+  summarise(numOfInstances = sum(numOfInstances))
+
+ggplot(df_H03_shift, aes(turn, numOfInstances, fill = stance)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300","blue", "#CCCCCC", "#CC0000", "cyan", "#E7B800", "#FF33FF")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+```{r W01 stance shift, include=TRUE}
+#png("W01_shift.png", units="in", width=10, height=5, res=200)
+df_W01_shift = df%>%
+  filter(stage == "Problem Discussion") %>% 
+  filter(grepl("W01", speaker)) %>%
+  filter(valence != "")%>%
+  #filter(attitude == "judgement" | trigger == "antagonist")%>%
+  filter(target != "other")%>%
+  filter(turn != "0")%>%
+  group_by(speaker, stance, turn)%>%
+  summarise(numOfInstances = sum(numOfInstances))
+
+ggplot(df_W01_shift, aes(turn, numOfInstances, fill = stance)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300","#CCCCCC", "#CC0000", "#E7B800", "#FF33FF")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+```{r W02 stance shift, include=TRUE}
+#png("W02_shift.png", units="in", width=10, height=5, res=200)
+df_W02_shift = df%>%
+  filter(stage == "Problem Discussion") %>% 
+  filter(grepl("W02", speaker)) %>%
+  filter(valence != "")%>%
+  #filter(attitude == "judgement" | trigger == "antagonist")%>%
+  filter(target != "other")%>%
+  filter(turn != "0")%>%
+  group_by(speaker, stance, turn)%>%
+  summarise(numOfInstances = sum(numOfInstances))
+
+ggplot(df_W02_shift, aes(turn, numOfInstances, fill = stance)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300","blue", "#CCCCCC", "#CC0000","cyan", "#E7B800", "#FF33FF")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+```{r W03 stance shift, include=TRUE}
+#png("W03_shift.png", units="in", width=10, height=5, res=200)
+df_W03_shift = df%>%
+  filter(stage == "Problem Discussion") %>% 
+  filter(grepl("W03", speaker)) %>%
+  filter(valence != "")%>%
+  #filter(attitude == "judgement" | trigger == "antagonist")%>%
+  filter(target != "other")%>%
+  filter(turn != "0")%>%
+  group_by(speaker, stance, turn)%>%
+  summarise(numOfInstances = sum(numOfInstances))
+
+ggplot(df_W03_shift, aes(turn, numOfInstances, fill = stance)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300", "#CCCCCC", "#CC0000", "cyan", "#E7B800", "#FF33FF")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+```{r H_W03 stance shift, include=TRUE}
+#png("Husband_W03_AH_stance_shift.png", units="in", width=10, height=3, res=200)
+ggplot(subset(df_W03_shift, speaker == "Husband_W03_AH"), aes(turn, numOfInstances, fill = stance)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300", "#CCCCCC", "#CC0000","cyan", "#E7B800", "#FF33FF")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+```{r W_W03 stance shift, include=TRUE}
+#png("Wife_W03_WW_stance_shift.png", units="in", width=10, height=3, res=200)
+ggplot(subset(df_W03_shift, speaker == "Wife_W03_WW"), aes(turn, numOfInstances, fill = stance)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300", "#CCCCCC","#CC0000","cyan","#E7B800", "#FF33FF")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+
+
+```{r H01 mitigate shift, include=TRUE}
+#png("H01_miti_shift.png", units="in", width=10, height=5, res=200)
+df_H01_miti_shift = df%>%
+  filter(stage == "Problem Discussion") %>%  
+  filter(grepl("H01", speaker)) %>%
+  filter(valence != "")%>%
+  filter(target != "other")%>%
+  filter(turn != "0")%>%
+  group_by(speaker, stance_mitigate, turn)%>%
+  summarise(numOfInstances = sum(numOfInstances))
+
+ggplot(df_H01_miti_shift, aes(turn, numOfInstances, fill = stance_mitigate)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300","blue","#CCCCCC","#CC0000", "#E7B800", "#99FF99", "red")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="mitigation of the attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+```{r H02 mitigate shift, include=TRUE}
+#png("H02_miti_shift.png", units="in", width=10, height=5, res=200)
+df_H02_miti_shift = df%>%
+  filter(stage == "Problem Discussion") %>%  
+  filter(grepl("H02", speaker)) %>%
+  filter(valence != "")%>%
+  filter(target != "other")%>%
+  filter(turn != "0")%>%
+  group_by(speaker, stance_mitigate, turn)%>%
+  summarise(numOfInstances = sum(numOfInstances))
+
+ggplot(df_H02_miti_shift, aes(turn, numOfInstances, fill = stance_mitigate)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300", "#CCCCCC", "cyan", "#E7B800", "#FF33FF", "#99FF99")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="mitigation of the attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+```{r W_H02 mitigate shift, include=TRUE}
+#png("Wife_H02_AW_miti_shift.png", units="in", width=10, height=3, res=200)
+
+ggplot(subset(df_H02_miti_shift, speaker == "Wife_H02_AW"), aes(turn, numOfInstances, fill = stance_mitigate)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300", "#CCCCCC", "#FF33FF", "#99FF99")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="mitigation of the attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+
+
+```{r H03 mitigate shift, include=TRUE}
+#png("H03_miti_shift.png", units="in", width=10, height=5, res=200)
+df_H03_miti_shift = df%>%
+  filter(stage == "Problem Discussion") %>%  
+  filter(grepl("H03", speaker)) %>%
+  filter(valence != "")%>%
+  filter(target != "other")%>%
+  filter(turn != "0")%>%
+  group_by(speaker, stance_mitigate, turn)%>%
+  summarise(numOfInstances = sum(numOfInstances))
+
+ggplot(df_H03_miti_shift, aes(turn, numOfInstances, fill = stance_mitigate)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300", "#CCCCCC", "#E7B800", "#FF33FF", "#99FF99")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="mitigation of the attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+
+```{r W01 mitigate shift, include=TRUE}
+#png("W01_miti_shift.png", units="in", width=10, height=5, res=200)
+df_W01_miti_shift = df%>%
+  filter(stage == "Problem Discussion") %>%  
+  filter(grepl("W01", speaker)) %>%
+  filter(valence != "")%>%
+  filter(target != "other")%>%
+  filter(turn != "0")%>%
+  group_by(speaker, stance_mitigate, turn)%>%
+  summarise(numOfInstances = sum(numOfInstances))
+
+ggplot(df_W01_miti_shift, aes(turn, numOfInstances, fill = stance_mitigate)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300", "#CCCCCC", "#CC0000", "#E7B800", "#99FF99")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="mitigation of the attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+```{r Wife_W01_WW mitigate shift, include=TRUE}
+#png("Wife_W01_WW_miti_shift.png", units="in", width=10, height=3, res=200)
+
+ggplot(subset(df_W01_miti_shift, speaker == "Wife_W01_WW"), aes(turn, numOfInstances, fill = stance_mitigate)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#CCCCCC","#99FF99")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="mitigation of the attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+
+
+```{r W02 mitigate shift, include=TRUE}
+#png("W02_miti_shift.png", units="in", width=10, height=5, res=200)
+df_W02_miti_shift = df%>%
+  filter(stage == "Problem Discussion") %>%  
+  filter(grepl("W02", speaker)) %>%
+  filter(valence != "")%>%
+  filter(target != "other")%>%
+  filter(turn != "0")%>%
+  group_by(speaker, stance_mitigate, turn)%>%
+  summarise(numOfInstances = sum(numOfInstances))
+
+ggplot(df_W02_miti_shift, aes(turn, numOfInstances, fill = stance_mitigate)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300", "#CCCCCC", "#CC0000", "#FF33FF", "#99FF99", "red")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="mitigation of the attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+```{r W03 mitigate shift, include=TRUE}
+#png("W03_miti_shift.png", units="in", width=10, height=5, res=200)
+df_W03_miti_shift = df%>%
+  filter(stage == "Problem Discussion") %>%  
+  filter(grepl("W03", speaker)) %>%
+  filter(valence != "")%>%
+  filter(target != "other")%>%
+  filter(turn != "0")%>%
+  group_by(speaker, stance_mitigate, turn)%>%
+  summarise(numOfInstances = sum(numOfInstances))
+
+ggplot(df_W03_miti_shift, aes(turn, numOfInstances, fill = stance_mitigate)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300", "#CCCCCC", "#CC0000", "#E7B800", "#FF33FF", "#99FF99", "red")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="mitigation of the attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+
+```{r H02 self mitigate shift, include=TRUE}
+#png("H02_self_miti_shift.png", units="in", width=10, height=5, res=200)
+df_H02_self_miti_shift = df%>%
+  filter(stage == "Problem Discussion") %>%  
+  filter(grepl("H02", speaker)) %>%
+  filter(valence != "")%>%
+  filter(target == "self")%>%
+  filter(turn != "0")%>%
+  group_by(speaker, stance_mitigate, turn)%>%
+  summarise(numOfInstances = sum(numOfInstances))
+
+ggplot(df_H02_self_miti_shift, aes(turn, numOfInstances, fill = stance_mitigate)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#CCCCCC","#E7B800", "#FF33FF", "#99FF99")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="mitigation of the attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+```{r H03 self mitigate shift, include=TRUE}
+#png("H03_self_miti_shift.png", units="in", width=10, height=5, res=200)
+df_H03_self_miti_shift = df%>%
+  filter(stage == "Problem Discussion") %>%  
+  filter(grepl("H03", speaker)) %>%
+  filter(valence != "")%>%
+  filter(target == "self")%>%
+  filter(turn != "0")%>%
+  group_by(speaker, stance_mitigate_all, turn)%>%
+  summarise(numOfInstances = sum(numOfInstances))
+
+ggplot(df_H03_self_miti_shift, aes(turn, numOfInstances, fill = stance_mitigate_all)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#CCCCCC","#663300", "#FF33FF", "#CC0000", "#E7B800")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="mitigation of the attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+```{r H03 husband self mitigate shift, include=TRUE}
+#png("H03_husband_self_miti_shift.png", units="in", width=10, height=3, res=200)
+df_H03_husband_self_miti_shift = df%>%
+  filter(stage == "Problem Discussion") %>%  
+  filter(speaker == "Husband_H03_WH") %>%
+  filter(valence != "")%>%
+  filter(target == "self")%>%
+  filter(turn != "0")%>%
+  group_by(speaker, stance_mitigate_all, turn)%>%
+  summarise(numOfInstances = sum(numOfInstances))
+
+ggplot(df_H03_husband_self_miti_shift, aes(turn, numOfInstances, fill = stance_mitigate_all)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#CCCCCC","#663300", "#FF33FF", "#CC0000", "#E7B800")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="mitigation of the attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+```{r H03 antag mitigate shift, include=TRUE}
+#png("H03_antag_miti_shift.png", units="in", width=10, height=5, res=200)
+df_H03_antag_miti_shift = df%>%
+  filter(stage == "Problem Discussion") %>%  
+  filter(grepl("H03", speaker)) %>%
+  filter(valence != "")%>%
+  filter(target == "antagonist")%>%
+  filter(turn != "0")%>%
+  group_by(speaker, stance_mitigate_all, turn)%>%
+  summarise(numOfInstances = sum(numOfInstances))
+
+ggplot(df_H03_antag_miti_shift, aes(turn, numOfInstances, fill = stance_mitigate_all)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300", "#FF33FF", "blue", "#CCCCCC", "#CC0000", "cyan")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="mitigation of the attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+```{r H03_husband antag mitigate shift, include=TRUE}
+#png("H03_husband_antag_miti_shift.png", units="in", width=10, height=5, res=200)
+df_H03_husband_antag_miti_shift = df%>%
+  filter(stage == "Problem Discussion") %>%  
+  filter(speaker == "Husband_H03_WH") %>%
+  filter(valence == "-ve")%>%
+  filter(target == "antagonist")%>%
+  filter(turn != "0")%>%
+  group_by(speaker, stance_mitigate_all, turn)%>%
+  summarise(numOfInstances = sum(numOfInstances))
+
+ggplot(df_H03_husband_antag_miti_shift, aes(turn, numOfInstances, fill = stance_mitigate_all)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300", "#FF33FF", "#CCCCCC","cyan")) +
+  guides(fill=guide_legend(title="mitigation of the attitudinal complex"))+
+  ylab("number of instances")+
+  theme_bw()
+```
+
+
+```{r H02 antag mitigate shift, include=TRUE}
+#png("H02_antag_miti_shift.png", units="in", width=10, height=5, res=200)
+df_H02_antag_miti_shift = df%>%
+  filter(stage == "Problem Discussion") %>%  
+  filter(grepl("H02", speaker)) %>%
+  filter(valence != "")%>%
+  filter(target == "antagonist")%>%
+  filter(turn != "0")%>%
+  group_by(speaker, stance_mitigate_all, turn)%>%
+  summarise(numOfInstances = sum(numOfInstances))
+
+ggplot(df_H02_antag_miti_shift, aes(turn, numOfInstances, fill = stance_mitigate_all)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300", "#FF33FF", "#CCCCCC", "#E7B800", "cyan", "blue")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="mitigation of the attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+```{r W01 antag mitigate shift, include=TRUE}
+#png("W01_antag_miti_shift.png", units="in", width=10, height=5, res=200)
+df_W01_antag_miti_shift = df%>%
+  filter(stage == "Problem Discussion") %>%  
+  filter(grepl("W01", speaker)) %>%
+  filter(valence != "")%>%
+  filter(target == "antagonist")%>%
+  filter(turn != "0")%>%
+  group_by(speaker, stance_mitigate_all, turn)%>%
+  summarise(numOfInstances = sum(numOfInstances))
+
+ggplot(df_W01_antag_miti_shift, aes(turn, numOfInstances, fill = stance_mitigate_all)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300", "#FF33FF", "#CCCCCC",  "#CC0000","#E7B800", "red")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="mitigation of the attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+```{r W02 antag mitigate shift, include=TRUE}
+#png("W02_antag_miti_shift.png", units="in", width=10, height=5, res=200)
+df_W02_antag_miti_shift = df%>%
+  filter(stage == "Problem Discussion") %>%  
+  filter(grepl("W02", speaker)) %>%
+  filter(valence != "")%>%
+  filter(target == "antagonist")%>%
+  filter(turn != "0")%>%
+  group_by(speaker, stance_mitigate_all, turn)%>%
+  summarise(numOfInstances = sum(numOfInstances))
+
+ggplot(df_W02_antag_miti_shift, aes(turn, numOfInstances, fill = stance_mitigate_all)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300", "#FF33FF", "#CC0000", "#CCCCCC", "#E7B800", "blue", "cyan")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="mitigation of the attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+```{r W03 antag mitigate shift, include=TRUE}
+#png("W03_antag_miti_shift.png", units="in", width=10, height=5, res=200)
+df_W03_antag_miti_shift = df%>%
+  filter(stage == "Problem Discussion") %>%  
+  filter(grepl("W03", speaker)) %>%
+  filter(valence != "")%>%
+  filter(target == "antagonist")%>%
+  filter(turn != "0")%>%
+  group_by(speaker, stance_mitigate_all, turn)%>%
+  summarise(numOfInstances = sum(numOfInstances))
+
+ggplot(df_W03_antag_miti_shift, aes(turn, numOfInstances, fill = stance_mitigate_all)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=c("#663300", "#FF33FF", "#CCCCCC", "#CC0000", "#E7B800", "cyan")) +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())+
+  guides(fill=guide_legend(title="mitigation of the attitudinal complex"))+
+  ylab("number of instances")+
+  facet_grid(rows = vars(speaker))+
+  theme_bw()
+```
+
+```{r addressee count, include=TRUE}
+df_addressee = df%>%
+  filter(addressee != "other")%>%
+  filter(!grepl("other", stance))%>%
+  group_by(speaker, addressee, stance)%>%
+  summarise(numOfInstances = sum(numOfInstances))%>%
+  mutate(percentage = round(numOfInstances/sum(numOfInstances), 2), sum = sum(numOfInstances))%>%
+  arrange(desc(percentage), .by_group = TRUE)
+df_addressee
+```
+
+```{r addressee plot, include=TRUE}
+#attitudinal disposition shift re addressee change
+#png("addressee.png", units="in", width=10, height=8, res=200)
+ggplot(df_addressee, aes(addressee, percentage, fill = stance)) + 
+  geom_bar(position="fill", stat="identity") +
+  scale_fill_manual(values=c("#663300","blue", "#CCCCCC",  "#CC0000","cyan", "#E7B800", "#FF33FF")) +
+  theme(axis.text.x = element_text(hjust = 1, angle = 45), axis.title.x = element_blank(), legend.text = element_text(size = 8))+
+  guides(fill=guide_legend(title="attitudinal complex"))+
+  facet_wrap(~speaker)
+```
+
+
+```{r addressee mitigation count, include=TRUE}
+df_addressee_miti = df%>%
+  filter(addressee != "other")%>%
+  filter(!grepl("other", stance))%>%
+  group_by(speaker, addressee, stance_mitigate)%>%
+  summarise(numOfInstances = sum(numOfInstances))%>%
+  mutate(percentage = round(numOfInstances/sum(numOfInstances), 2), sum = sum(numOfInstances))%>%
+  arrange(desc(percentage), .by_group = TRUE)
+df_addressee_miti
+```
+
+```{r addressee mitigation plot, include=TRUE}
+#attitudinal disposition shift re addressee change
+ggplot(df_addressee_miti, aes(addressee, percentage, fill = stance_mitigate)) + 
+  geom_bar(position="fill", stat="identity") +
+  scale_fill_manual(values=c("#663300", "blue", "#CCCCCC", "#CC0000","cyan", "#E7B800", "#FF33FF", "#99FF99")) +
+  guides(fill=guide_legend(title="mitigation of attitudinal complex"))+
+  facet_wrap(~speaker)
+```
+
+```{r stage count, include=TRUE}
+#attitudinal disposition shift across different stages
+df_stage = df%>%
+  filter(stage != "pre-mediation")%>%
+  filter(!grepl("other", stance))%>%
+  group_by(speaker, stage, stance)%>%
+  summarise(numOfInstances = sum(numOfInstances))%>%
+  mutate(percentage = round(numOfInstances/sum(numOfInstances), 2), sum = sum(numOfInstances))%>%
+  arrange(desc(percentage), .by_group = TRUE)
+df_stage
+```
+
+```{r stage plot, include=TRUE}
+#attitudinal disposition shift across different stages
+#png("stage.png", units="in", width=10, height=8, res=200)
+ggplot(df_stage, aes(x=reorder(stage, desc(stage)), percentage, fill = stance)) + 
+  geom_bar(position="fill", stat="identity") +
+  scale_fill_manual(values=c("#663300","blue", "#CCCCCC",  "#CC0000", "cyan", "#E7B800", "#FF33FF")) +
+  theme(axis.text.x = element_text(hjust = 1, angle = 45), axis.title.x = element_blank(), legend.text = element_text(size = 8))+
+  guides(fill=guide_legend(title="attitudinal complex"))+
+  facet_wrap(~speaker)
+```
+
+```{r WH03 stage plot, include=TRUE}
+#attitudinal disposition shift across different stages
+#png("stage_WH03.png", units="in", width=5, height=8, res=200)
+ggplot(subset(df_stage, speaker == "Wife_H03_AW"), aes(x=reorder(stage, desc(stage)), percentage, fill = stance)) + 
+  geom_bar(position="fill", stat="identity") +
+  scale_fill_manual(values=c("#663300","blue", "#CCCCCC",  "#CC0000", "#FF33FF")) +
+  theme(axis.text.x = element_text(hjust = 1, angle = 45), axis.title.x = element_blank(), legend.text = element_text(size = 8))+
+  guides(fill=guide_legend(title="attitudinal complex"))+
+  facet_wrap(~speaker)
+```
+
+
