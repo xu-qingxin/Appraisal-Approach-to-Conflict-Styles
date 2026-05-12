@@ -1,0 +1,551 @@
+---
+title: 'Chapter 4: A synoptic view of attitudinal disposition'
+author: "Qingxin Xu"
+date: "26/05/2021"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup}
+#install.packages("tidyverse")
+library(tidyverse)
+library(ggpubr)
+library(ggplot2)
+#library(GGally)
+library(cluster)
+#options(tibble.print_min = Inf)
+
+```
+
+```{r pca package}
+#install.packages(c("FactoMineR", "factoextra"))
+library("FactoMineR")
+library("factoextra")
+```
+
+
+```{r import data}
+#load csv files
+filename = list.files(getwd(), pattern = "csv", full.names=T)
+d = data.frame()
+bin = data.frame()
+for (i in 1:length(filename)){
+  bin = read.csv(filename[i])
+  bin = mutate(bin, filename = filename[i])
+  d = rbind(d, bin)
+}
+```
+
+
+```{r wrangle, include=TRUE}
+#select speakers
+df = d%>%
+  mutate_if(is.factor, as.character)%>%
+  mutate(turn = as.numeric(turn))%>%
+  filter(grepl("Husband", speaker) | grepl("Wife", speaker))%>%
+  mutate(stage = ifelse(grepl("H01", speaker) & turn > 0 & turn <= 137, "discussing problem",
+                        ifelse(grepl("H02", speaker) & turn > 0 &turn <= 140, "discussing problem",
+                               ifelse(grepl("H03", speaker) & turn > 0 &turn <= 148, "discussing problem",
+                                      ifelse(grepl("W01", speaker) & turn > 0 &turn <= 96, "discussing problem",
+                                             ifelse(grepl("W02", speaker) & turn > 0 &turn <= 98, "discussing problem",
+                                                    ifelse(grepl("W03", speaker) & turn > 0 &turn <= 202, "discussing problem", "mediation"))))))) %>%
+  filter(stage == "discussing problem") %>%
+  mutate(gender = ifelse(grepl("Husband", speaker), "male", "female")) %>%
+  mutate(target = ifelse(grepl("antagonist", target.detail), "antagonist",
+                         ifelse(grepl("self", target.detail), "self","other"))) %>%
+  mutate(position = ifelse(grepl("Husband_H0", speaker), "wayward husband",
+                        ifelse(grepl("Wife_H0", speaker), "aggrieved wife",
+                               ifelse(grepl("Wife_W0", speaker), "wayward wife", "aggrieved husband")))) %>%
+  mutate(waywardness = ifelse(grepl("wayward", position), "wayward", "aggrieved"))%>%
+  mutate(graduation = ifelse(grepl("up", graduation.detail), "up",
+                             ifelse(grepl("down", graduation.detail), "down", "noscale")))%>%
+  mutate(engagement = ifelse(grepl("monogloss", engagement.detail), "monogloss",
+                             ifelse(grepl("disclaim", engagement.detail), "disclaim",
+                                    ifelse(grepl("proclaim", engagement.detail), "proclaim",
+                                           ifelse(grepl("attribute", engagement.detail), "attribute",
+                                                  ifelse(grepl("entertain", engagement.detail), "entertain", NA))))))%>%
+  mutate(counter = 1)
+
+```
+
+```{r total attitude count, include=TRUE}
+totalAttitude = df %>%
+  filter(valence != "")%>%
+  mutate(total = 1) %>%
+  group_by(speaker)%>%
+  summarise(total = sum(total)) 
+totalAttitude
+```
+
+```{r add total counts, include=TRUE}
+df$total <- totalAttitude$total[match(df$speaker, totalAttitude$speaker)]
+```
+
+```{r p_jud_self count, include=TRUE}
+df_p_jud_self = df%>%
+  filter(target == "self") %>%
+  filter(valence == "+ve") %>%
+  filter(attitude == "judgement") %>%
+  group_by(speaker, total, gender, waywardness)%>%
+  summarise(counter = sum(counter)) %>%
+  mutate(p_jud_self = round(counter/total *100, 2))
+df_p_jud_self
+```
+```{r p_jud_antag count, include=TRUE}
+df_p_jud_antag = df%>%
+  filter(target == "antagonist") %>%
+  filter(valence == "+ve") %>%
+  filter(attitude == "judgement") %>%
+  group_by(speaker, total, gender, waywardness)%>%
+  summarise(counter = sum(counter)) %>%
+  mutate(p_jud_antag = round(counter/total *100, 2))
+df_p_jud_antag
+```
+
+```{r n_jud_self count, include=TRUE}
+df_n_jud_self = df%>%
+  filter(target == "self") %>%
+  filter(valence == "-ve") %>%
+  filter(attitude == "judgement") %>%
+  group_by(speaker, total, gender, waywardness)%>%
+  summarise(counter = sum(counter)) %>%
+  mutate(n_jud_self = round(counter/total *100, 2))
+df_n_jud_self
+```
+
+```{r n_jud_antag count, include=TRUE}
+df_n_jud_antag = df%>%
+  filter(target == "antagonist") %>%
+  filter(valence == "-ve") %>%
+  filter(attitude == "judgement") %>%
+  group_by(speaker, total, gender, waywardness)%>%
+  summarise(counter = sum(counter)) %>%
+  mutate(n_jud_antag = round(counter/total *100, 2))
+df_n_jud_antag
+```
+
+```{r p_jud_other count, include=TRUE}
+df_p_jud_other = df%>%
+  filter(target == "other") %>%
+  filter(valence == "+ve")%>%
+  filter(attitude == "judgement") %>%
+  group_by(speaker, total, gender, waywardness)%>%
+  summarise(counter = sum(counter)) %>%
+  mutate(p_jud_other = round(counter/total *100, 2))
+df_p_jud_other
+```
+```{r n_jud_other count, include=TRUE}
+df_n_jud_other = df%>%
+  filter(target == "other") %>%
+  filter(valence == "-ve")%>%
+  filter(attitude == "judgement") %>%
+  group_by(speaker, total, gender, waywardness)%>%
+  summarise(counter = sum(counter)) %>%
+  mutate(n_jud_other = round(counter/total *100, 2))
+df_n_jud_other
+```
+
+```{r NATA count, include=TRUE}
+df_NATA = df%>%
+  filter(trigger == "antagonist") %>%
+  group_by(speaker, total, gender, waywardness)%>%
+  summarise(counter = sum(counter)) %>%
+  mutate(NATA = round(counter/total *100, 2))
+df_NATA
+```
+
+```{r OAO count, include=TRUE}
+df_OAO = df%>%
+  filter(trigger == "observed") %>%
+  group_by(speaker, total, gender, waywardness)%>%
+  summarise(counter = sum(counter)) %>%
+  mutate(OAO = round(counter/total *100, 2))
+df_OAO
+```
+
+```{r appreciation count, include=TRUE}
+df_APP= df%>%
+  filter(attitude == "appreciation") %>%
+  filter(explicitness == "inscribe")%>%
+  group_by(speaker, total, gender, waywardness)%>%
+  summarise(counter = sum(counter)) %>%
+  mutate(APP = round(counter/total *100, 2))
+df_APP
+```
+
+```{r negative appreciation count, include=TRUE}
+df_neg_APP= df%>%
+  filter(attitude == "appreciation") %>%
+  filter(explicitness == "inscribe")%>%
+  filter(valence == "-ve")%>%
+  group_by(speaker, total, gender, waywardness)%>%
+  summarise(counter = sum(counter)) %>%
+  mutate(neg_APP = round(counter/total *100, 2))
+df_neg_APP
+```
+
+
+```{r 9 complex occurrence dataframe, include=TRUE}
+mymerge <- function (x, y) {
+  merge(x, y, by=c("speaker"), all=TRUE)
+}
+df_9_complex_occurrence <-Reduce(mymerge, list(df_p_jud_self, df_n_jud_self, df_p_jud_antag, df_n_jud_antag, df_p_jud_other, df_n_jud_other, df_NATA, df_OAO, df_APP))%>%
+  ungroup()%>%
+  select(speaker, p_jud_self, n_jud_self, p_jud_antag, n_jud_antag, p_jud_other, n_jud_other, NATA, OAO, APP)%>%
+  replace(is.na(.), 0)%>%
+  mutate_if(is.numeric, ~1 * (. != 0))%>%
+  column_to_rownames(var = "speaker")
+
+df_9_complex_occurrence
+```
+
+
+
+```{r 9 complex occurrence how many clusters, include=TRUE}
+#install.packages('farver')
+#png("complex_occurrence_how many.png", units="in", width=10, height=5, res=100)
+set.seed(123)
+fviz_nbclust(df_9_complex_occurrence, kmeans, method = "silhouette")
+```
+
+```{r 9 complex occurrence cluster}
+#png("complex_occurrence_cluster_4.png", units="in", width=10, height=5, res=100)
+hcl_9_complex_occurrence=hclust(dist(df_9_complex_occurrence), method="complete")
+plot(hcl_9_complex_occurrence, hang= -1)
+rect.hclust(hcl_9_complex_occurrence, h = 2, border = "red")
+```
+
+```{r NJA count, include=TRUE}
+df_NJA = df%>%
+  filter(valence == "-ve") %>%
+  filter(explicitness == "inscribe") %>%
+  filter(attitude == "judgement") %>%
+  filter(target == "antagonist") %>%
+  group_by(speaker, total, gender, waywardness)%>%
+  summarise(counter = sum(counter)) %>%
+  mutate(NJA = round(counter/total *100, 2))
+df_NJA
+```
+
+```{r PJA count, include=TRUE}
+df_PJA = df%>%
+  filter(valence == "+ve") %>%
+  filter(explicitness == "inscribe") %>%
+  filter(attitude == "judgement") %>%
+  filter(target == "antagonist") %>%
+  group_by(speaker, total, gender, waywardness)%>%
+  summarise(counter = sum(counter)) %>%
+  mutate(PJA = round(counter/total *100, 2))
+df_PJA
+```
+
+```{r PJS count, include=TRUE}
+df_PJS = df%>%
+  filter(valence == "+ve") %>%
+  filter(explicitness == "inscribe") %>%
+  filter(attitude == "judgement") %>%
+  filter(target == "self") %>%
+  group_by(speaker, total, gender, waywardness)%>%
+  summarise(counter = sum(counter)) %>%
+  mutate(PJS = round(counter/total *100, 2))
+df_PJS
+```
+
+```{r NJS count, include=TRUE}
+df_NJS = df%>%
+  filter(valence == "-ve") %>%
+  filter(explicitness == "inscribe") %>%
+  filter(attitude == "judgement") %>%
+  filter(target == "self") %>%
+  group_by(speaker, total, gender, waywardness)%>%
+  summarise(counter = sum(counter)) %>%
+  mutate(NJS = round(counter/total *100, 2))
+df_NJS
+```
+
+
+```{r p_other count, include=TRUE}
+df_PO = df%>%
+  filter(target == "other") %>%
+  filter(valence == "+ve")%>%
+  filter(explicitness == "inscribe")%>%
+  filter(attitude == "judgement") %>%
+  group_by(speaker, total, gender, waywardness)%>%
+  summarise(counter = sum(counter)) %>%
+  mutate(PJO = round(counter/total *100, 2))
+df_PO
+```
+
+
+```{r n_other count, include=TRUE}
+df_NO = df%>%
+  filter(target == "other") %>%
+  filter(valence == "-ve")%>%
+  filter(explicitness == "inscribe")%>%
+  filter(attitude == "judgement") %>%
+  group_by(speaker, total, gender, waywardness)%>%
+  summarise(counter = sum(counter)) %>%
+  mutate(NJO = round(counter/total *100, 2))
+df_NO
+```
+```{r invocation count, include=TRUE}
+df_INVO = df%>%
+  filter(explicitness == "invoke")%>%
+  group_by(speaker, total, gender, waywardness)%>%
+  summarise(counter = sum(counter)) %>%
+  mutate(INVO = round(counter/total *100, 2))
+df_INVO
+```
+
+
+```{r inscribe complex occurrence dataframe, include=TRUE}
+df_inscribe_complex_occurrence <- Reduce(mymerge, list(df_NJA, df_PJA, df_NJS, df_PJS, df_PO, df_NO, df_NATA, df_OAO, df_APP))%>% 
+  ungroup()%>%
+  select(speaker, NJA, PJA, NJS, PJS, PJO, NJO, NATA, OAO, APP)%>%    
+  replace(is.na(.), 0)%>%
+  mutate_if(is.numeric, ~1 * (. != 0))%>%
+  column_to_rownames(var = "speaker")
+
+df_inscribe_complex_occurrence
+```
+
+```{r inscribed complex occurrence how many clusters, include=TRUE}
+#install.packages('farver')
+set.seed(123)
+fviz_nbclust(df_inscribe_complex_occurrence, kmeans, method = "silhouette")
+```
+
+
+```{r inscribed complex occurrence cluster}
+#png("complex_occurrence_cluster_4.png", units="in", width=10, height=5, res=100)
+hcl_inscribe_complex_occurrence=hclust(dist(df_inscribe_complex_occurrence), method="complete")
+plot(hcl_inscribe_complex_occurrence, hang= -1)
+rect.hclust(hcl_inscribe_complex_occurrence, h = 2, border = "red")
+```
+
+```{r complex occurrence dataframe, include=TRUE}
+df_10_complex_occurrence <- Reduce(mymerge, list(df_NJA, df_PJA, df_NJS, df_PJS, df_PO, df_NO, df_NATA, df_OAO, df_APP, df_INVO))%>% 
+  ungroup()%>%
+  select(speaker, NJA, PJA, NJS, PJS, PJO, NJO, NATA, OAO, APP, INVO)%>%    
+  replace(is.na(.), 0)%>%
+  mutate_if(is.numeric, ~1 * (. != 0))%>%
+  column_to_rownames(var = "speaker")
+
+df_10_complex_occurrence
+```
+
+
+```{r complex occurrence how many clusters, include=TRUE}
+#install.packages('farver')
+set.seed(123)
+fviz_nbclust(df_10_complex_occurrence, kmeans, method = "silhouette")
+```
+
+```{r complex occurrence cluster}
+#png("all_complex_occurrence_cluster_4.png", units="in", width=10, height=5, res=100)
+hcl_10_complex_occurrence=hclust(dist(df_10_complex_occurrence), method="complete")
+plot(hcl_10_complex_occurrence, hang= -1)
+rect.hclust(hcl_10_complex_occurrence, h = 2, border = "red")
+```
+
+
+```{r complex frequency dataframe, include=TRUE}
+
+df_complex_frequency <- Reduce(mymerge, list(df_NJA, df_PJA, df_NJS, df_PJS, df_PO, df_NO, df_NATA, df_OAO, df_APP, df_INVO))%>% 
+  ungroup()%>%
+  select(speaker, NJA, PJA, NJS, PJS, PJO, NJO, NATA, OAO, APP, INVO)%>%                            
+  replace(is.na(.), 0)%>%
+  column_to_rownames(var = "speaker")
+  
+df_complex_frequency
+```
+
+
+```{r complex frequency how many clusters, include=TRUE}
+#png("complex_ratio_how many.png", units="in", width=10, height=5, res=100)
+set.seed(123)
+fviz_nbclust(df_complex_frequency, kmeans, method = "silhouette")
+```
+
+
+```{r complex frequency group individuals, include=TRUE}
+#png("complex_frequency.png", units="in", width=10, height=8, res=100)
+complex_frequency.pca <- PCA(df_complex_frequency, graph = FALSE)
+complex_frequency.ind <- get_pca_ind(complex_frequency.pca)
+res.km <- kmeans(complex_frequency.ind$coord, centers = 3, nstart = 25)
+grp <- as.factor(res.km$cluster)
+# Color variables by groups
+fviz_pca_biplot(complex_frequency.pca, col.ind = grp, 
+             palette = c("#0073C2FF", "#800080", "#00FF00", "#00AFBB"),
+             col.var = "red",
+             repel = TRUE,
+             addEllipses = TRUE, ellipse.type = "convex", #plot convex hull of a set o points
+             legend.title = "Cluster",
+             title = "Cluster plot: attitudinal complex frequency (with speaker)")
+```
+
+
+
+```{r PJS bar}
+#png("PJS_bar.png", units="in", width=10, height=4, res=100)
+ggplot(df_PJS, aes(reorder(speaker, PJS), PJS, fill = PJS)) + 
+  geom_bar(stat = "identity") +
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  scale_fill_gradient(low = "yellow", high = "purple", na.value = NA)+
+  geom_text(aes(label = PJS), hjust = 0.5, check_overlap = TRUE, size = 4 )+
+  labs(x="speaker", y= "+ve Judge self [%]")
+  
+```
+
+```{r NJA bar}
+#png("NJA_ratio_bar.png", units="in", width=10, height=4, res=100)
+ggplot(df_NJA, aes(reorder(speaker, NJA), NJA, fill = NJA)) + 
+  geom_bar(stat = "identity") +
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  scale_fill_gradient(low = "yellow", high = "purple", na.value = NA)+
+  geom_text(aes(label = NJA), hjust = 0.5, check_overlap = TRUE, size = 4 )+
+  labs(x="speaker", y="-ve judge antagonist [%]")
+  
+```
+
+```{r NJA lollipop}
+#png("NJA_ratio_lollipop.png", units="in", width=10, height=4, res=200)
+ggplot(df_NJA, aes(NJA, reorder(speaker, NJA), color = NJA)) +
+  geom_segment(aes(x = 0, xend = NJA, yend = reorder(speaker, NJA)), 
+               linewidth = 1.2, alpha = 0.8) +
+  geom_point(size = 4, alpha = 0.9) +
+  theme_minimal() +
+  scale_color_gradient2(low = "#2166AC", mid = "#F7F7F7", high = "#B2182B", 
+                       midpoint = median(df_NJA$NJA))+
+  geom_text(aes(label = paste0(NJA, "%")), hjust = -0.5, size = 3.2, fontface = "bold") +
+  labs(y = "Speaker", x = "Negative Judge Antagonist [%]") +
+  theme(axis.text.y = element_text(size = 9, face = "bold"),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank()) +
+  expand_limits(x = max(df_NJA$NJA) * 1.15)
+
+```
+
+
+```{r NJA wayward bar}
+#png("NJA_ratio__wayward_bar.png", units="in", width=10, height=4, res=200)
+ggplot(df_NJA, aes(reorder(speaker, NJA), NJA, fill = waywardness)) + 
+  geom_bar(stat = "identity") +
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  #scale_fill_gradient(low = "yellow", high = "purple", na.value = NA)+
+  geom_text(aes(label = NJA), hjust = 0.5, check_overlap = TRUE, size = 4 )+
+  labs(x="speaker", y="-ve judge antagonist [%]")
+  
+```
+
+```{r NJA wayward grouped bar}
+#png("NJA_ratio_wayward_grouped bar.png", units="in", width=10, height=5, res=200)
+ggplot(df_NJA, aes(x = waywardness, y = NJA, fill = waywardness)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.2, alpha = 0.6, size = 2) +
+  #scale_fill_manual(values = c("#D9D9D9", "#636363"))+
+  scale_fill_manual(values = c("#EF8A62", "#67A9CF")) + # Blue and Orange
+  theme_bw() +
+  labs(x = "Waywardness", y = "Negative Judge Antagonist [%]") +
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 3, color = "red")
+  
+```
+
+
+```{r PJS wayward bar}
+#png("PJS_ratio__wayward_bar.png", units="in", width=10, height=4, res=100)
+ggplot(df_PJS, aes(reorder(speaker, PJS), PJS, fill = waywardness)) + 
+  geom_bar(stat = "identity") +
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  #scale_fill_gradient(low = "yellow", high = "purple", na.value = NA)+
+  geom_text(aes(label = PJS), hjust = 0.5, check_overlap = TRUE, size = 4 )+
+  labs(x="speaker", y="+ve judge self [%]")
+  
+```
+
+
+```{r NJA NATA dataframe}
+df_NJA_NATA <- Reduce(mymerge, list(df_NJA, df_NATA))%>%
+  ungroup()%>%
+  select(speaker, NJA, NATA, waywardness.x)%>%
+  replace(is.na(.), 0)
+
+```
+
+
+
+```{r NJA NATA scatter}
+#png("NJA_NATA_ratio_scatter.png", units="in", width=10, height=7, res=100)
+
+#install.packages("ggalt") 
+#library(ggalt)
+library(ggrepel)
+
+df_NJA_NATA_grouping <-df_NJA_NATA%>%
+  mutate(grouping = ifelse(speaker %in% c ("Husband_H01_WH", "Husband_H02_WH", "Husband_H03_WH"), "low or zero NATA", "high NJA/NATA"))
+
+ggplot(df_NJA_NATA_grouping, 
+       aes(NJA, NATA, label = speaker, color = grouping)) + 
+  geom_point(size = 4) +
+  labs(x="-ve Judge antagonist [%]", y="-ve Affect triggered by antagonist [%]") +
+  geom_encircle(expand=0.03, size = 2) +
+  scale_color_brewer(palette = "Set1", direction = 1) +
+  theme_bw() +
+  theme(legend.text = element_text(size = 10))+
+  xlim(0,20)+ylim(0,13)+
+  geom_text_repel(nudge_x = 0.01, nudge_y = 0.01, size = 4)
+```
+
+
+```{r NJA NATA wayward scatter}
+#png("NJA_NATA_ratio_wayward_scatter.png", units="in", width=10, height=7, res=100)
+
+ggplot(df_NJA_NATA, 
+       aes(NJA, NATA, label = speaker, color = waywardness.x)) + 
+  geom_point(size = 4) +
+  labs(x="-ve Judge antagonist [%]", y="-ve Affect triggered by antagonist [%]") +
+  geom_encircle(expand=0.03, size = 2) +
+  scale_color_brewer(palette = "Set1", direction = 1) +
+  theme_bw() +
+  theme(legend.text = element_text(size = 10))+
+  xlim(0,20)+ylim(0,13)+
+  geom_text_repel(nudge_x = 0.01, nudge_y = 0.01, size = 4)
+```
+
+
+
+```{r NJA PJS dataframe}
+df_NJA_PJS <- Reduce(mymerge, list(df_NJA, df_PJS))%>%
+  ungroup()%>%
+  select(speaker, NJA, PJS)%>%
+  replace(is.na(.), 0)
+
+df_NJA_PJS_grouping <-df_NJA_PJS%>%
+  mutate(grouping = ifelse(speaker %in% c ("Husband_H02", "Husband_H03") , "high NJA/PJS", 
+                           "high NJA, low to zero PJS"))
+```
+
+```{r NJA PJS scatter}
+#png("NJA_PJS_ratio_scatter.png", units="in", width=10, height=4, res=100)
+
+ggplot(df_NJA_PJS_grouping, 
+       aes(NJA, PJS, label = speaker, color = grouping)) + 
+  geom_point(size = 4) +
+  labs(x="-ve Judge antagonist [%]", y="+ve Judge self [%]") +
+  geom_encircle(expand=0.03, size = 2) +
+  scale_color_brewer(palette = "Set1", direction = 1) +
+  theme_bw() +
+  theme(legend.text = element_text(size = 10))+
+  xlim(0, 20)+ylim(0, 13)+
+  geom_text_repel(nudge_x = 0.01, nudge_y = 0.01, size = 4)
+```
+
+
+
+
